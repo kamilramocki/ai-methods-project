@@ -8,7 +8,7 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 # ścieżki
 DATA_DIR = "data"
-OUTPUT_DIR_GRAPHS = "output_graphs"
+OUTPUT_DIR_GRAPHS = "output_graphs/p1"
 os.makedirs(OUTPUT_DIR_GRAPHS, exist_ok=True)
 
 def main():

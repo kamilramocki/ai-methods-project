@@ -11,7 +11,7 @@ from tabulate import tabulate
 sys.stdout.reconfigure(encoding='utf-8')
 
 PROCESSED_DIR = "processed"
-OUTPUT_DIR = "output_graphs"
+OUTPUT_DIR = "output_graphs/p2"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 TARGET_COL = "price"
