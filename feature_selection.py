@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,16 +13,19 @@ sys.stdout.reconfigure(encoding='utf-8')
 
 PROCESSED_DIR = "processed"
 OUTPUT_DIR = "output_graphs/p2"
+OUTPUT_DIR_CITIES = os.path.join(OUTPUT_DIR, "cities")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR_CITIES, exist_ok=True)
 
 TARGET_COL = "price"
 
 
-def analyze_features(df: pd.DataFrame, dataset_name: str):
+def analyze_features(df: pd.DataFrame, dataset_name: str, drop_cols=None):
     print(f"Analiza: {dataset_name}")
+    drop_cols = drop_cols or []
 
     # wczytanie danych
-    X = df.drop(columns=[TARGET_COL])
+    X = df.drop(columns=[TARGET_COL] + drop_cols, errors="ignore")
     y = df[TARGET_COL]
     feature_names = X.columns.tolist()
 
@@ -89,7 +93,47 @@ def analyze_features(df: pd.DataFrame, dataset_name: str):
     return results, k_80, k_90, cumulative
 
 
-def plot_results(results: pd.DataFrame, k_80: int, k_90: int, cumulative: np.ndarray, dataset_name: str):
+def analyze_features_per_city(df: pd.DataFrame, dataset_name: str, generate_plots: bool = True, output_dir: str = OUTPUT_DIR_CITIES):
+    if "city" not in df.columns:
+        print(f"\nBrak kolumny 'city' w zbiorze: {dataset_name} — pomijam analizę per-miasto.")
+        return {}
+
+    city_results = {}
+    city_ids = sorted(df["city"].dropna().unique())
+
+    print(f"\n{'=' * 90}")
+    print(f"Analiza per-miasto: {dataset_name}")
+    print(f"{'=' * 90}")
+
+    for city_id in city_ids:
+        city_df = df[df["city"] == city_id]
+        if isinstance(city_id, (int, np.integer)):
+            city_label = str(city_id)
+        elif isinstance(city_id, (float, np.floating)) and float(city_id).is_integer():
+            city_label = str(int(city_id))
+        else:
+            city_label = str(city_id)
+
+        label = f"{dataset_name} | Miasto {city_label}"
+        analysis = analyze_features(city_df, label, drop_cols=["city"])
+
+        if analysis is None:
+            continue
+
+        results, k_80, k_90, cumulative = analysis
+        city_results[city_id] = {
+            "results": results,
+            "k_80": k_80,
+            "k_90": k_90,
+        }
+
+        if generate_plots:
+            plot_results(results, k_80, k_90, cumulative, label, output_dir=output_dir)
+
+    return city_results
+
+
+def plot_results(results: pd.DataFrame, k_80: int, k_90: int, cumulative: np.ndarray, dataset_name: str, output_dir: str = OUTPUT_DIR):
     n = len(results)
     features = results["feature"].tolist()
     colors_f  = ["#2563eb" if i < k_80 else "#93c5fd" for i in range(n)]
@@ -180,6 +224,7 @@ def plot_results(results: pd.DataFrame, k_80: int, k_90: int, cumulative: np.nda
                  f"{val:.3f}", va="center", fontsize=7, color="#475569")
 
     # zapis do pliku
+    os.makedirs(output_dir, exist_ok=True)
     safe_name = dataset_name.lower().replace(" ", "_").replace("(", "").replace(")", "")
     filepath = os.path.join(OUTPUT_DIR, f"feature_importance_{safe_name}.png")
     plt.savefig(filepath, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
@@ -209,6 +254,7 @@ def main():
 
         results, k_80, k_90, cumulative = analyze_features(df, name)
         plot_results(results, k_80, k_90, cumulative, name)
+        analyze_features_per_city(df, name, generate_plots=True, output_dir=OUTPUT_DIR_CITIES)
 
         all_results[name] = {
             "results": results,
