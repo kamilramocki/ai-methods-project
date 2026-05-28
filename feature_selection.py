@@ -1,6 +1,5 @@
 import os
 import sys
-import re
 import pandas as pd
 import numpy as np
 import json
@@ -239,6 +238,7 @@ def main():
     }
 
     all_results = {}
+    features_to_save = {}
 
     for name, (filename, mapping_filename) in datasets.items():
         filepath = os.path.join(PROCESSED_DIR, filename)
@@ -263,13 +263,27 @@ def main():
 
         results, k_80, k_90, cumulative = analyze_features(df, name)
         plot_results(results, k_80, k_90, cumulative, name)
-        analyze_features_per_city(df, name, generate_plots=True, output_dir=OUTPUT_DIR_CITIES, city_mapping=city_mapping)
+
+        city_results = analyze_features_per_city(df, name, generate_plots=True, output_dir=OUTPUT_DIR_CITIES, city_mapping=city_mapping)
+        features_to_save[name] = {}
+        for c_id, c_data in city_results.items():
+            k_80_val = c_data["k_80"]
+            top_cols = c_data["results"]["feature"].iloc[:k_80_val].tolist()
+            features_to_save[name][str(c_id)] = top_cols
 
         all_results[name] = {
             "results": results,
             "k_80": k_80,
             "k_90": k_90,
         }
+
+    try:
+        features_json_path = os.path.join(PROCESSED_DIR, "top_80_features.json")
+        with open(features_json_path, "w", encoding="utf-8") as f:
+            json.dump(features_to_save, f, indent=4, ensure_ascii=False)
+        print(f"\nZapisano wyselekcjonowane cechy do pliku: {features_json_path}")
+    except Exception as e:
+        print(f"Błąd podczas zapisu cech do JSON: {e}")
 
     # Porównanie między zbiorami
     if len(all_results) == 2:
