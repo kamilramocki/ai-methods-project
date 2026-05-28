@@ -3,6 +3,7 @@ import sys
 import re
 import pandas as pd
 import numpy as np
+import json
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from sklearn.feature_selection import SelectKBest, f_regression, mutual_info_regression
@@ -12,7 +13,7 @@ from tabulate import tabulate
 sys.stdout.reconfigure(encoding='utf-8')
 
 PROCESSED_DIR = "processed"
-OUTPUT_DIR = "output_graphs/p2"
+OUTPUT_DIR = "output_graphs\\p2"
 OUTPUT_DIR_CITIES = os.path.join(OUTPUT_DIR, "cities")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR_CITIES, exist_ok=True)
@@ -29,7 +30,7 @@ def analyze_features(df: pd.DataFrame, dataset_name: str, drop_cols=None):
     y = df[TARGET_COL]
     feature_names = X.columns.tolist()
 
-    # standaryzacja (wymagana przez f_regression, poprawia jakość MI)
+    # standaryzacja
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
@@ -50,7 +51,7 @@ def analyze_features(df: pd.DataFrame, dataset_name: str, drop_cols=None):
         "mi_score":  mi_scores,
     })
 
-    # normalizacja wyników do [0, 1] – ułatwia porównanie obu metod
+    # normalizacja wyników do [0, 1]
     results["f_score_norm"] = results["f_score"] / results["f_score"].max()
     results["mi_score_norm"] = results["mi_score"] / results["mi_score"].max()
 
@@ -93,11 +94,12 @@ def analyze_features(df: pd.DataFrame, dataset_name: str, drop_cols=None):
     return results, k_80, k_90, cumulative
 
 
-def analyze_features_per_city(df: pd.DataFrame, dataset_name: str, generate_plots: bool = True, output_dir: str = OUTPUT_DIR_CITIES):
+def analyze_features_per_city(df: pd.DataFrame, dataset_name: str, generate_plots: bool = True, output_dir: str = OUTPUT_DIR_CITIES, city_mapping: dict = None):
     if "city" not in df.columns:
         print(f"\nBrak kolumny 'city' w zbiorze: {dataset_name} — pomijam analizę per-miasto.")
         return {}
 
+    city_mapping = city_mapping or {}
     city_results = {}
     city_ids = sorted(df["city"].dropna().unique())
 
@@ -107,14 +109,11 @@ def analyze_features_per_city(df: pd.DataFrame, dataset_name: str, generate_plot
 
     for city_id in city_ids:
         city_df = df[df["city"] == city_id]
-        if isinstance(city_id, (int, np.integer)):
-            city_label = str(city_id)
-        elif isinstance(city_id, (float, np.floating)) and float(city_id).is_integer():
-            city_label = str(int(city_id))
-        else:
-            city_label = str(city_id)
 
-        label = f"{dataset_name} | Miasto {city_label}"
+        city_name = city_mapping.get(str(int(city_id)), str(city_id))
+        city_label = city_name.capitalize()
+
+        label = f"{dataset_name} {city_label}"
         analysis = analyze_features(city_df, label, drop_cols=["city"])
 
         if analysis is None:
@@ -235,13 +234,13 @@ def plot_results(results: pd.DataFrame, k_80: int, k_90: int, cumulative: np.nda
 
 def main():
     datasets = {
-        "Kupno (Sale)":    "apartments_sale_processed.csv",
-        "Wynajem (Rent)":  "apartments_rent_processed.csv",
+        "Kupno (Sale)":    ("apartments_sale_processed.csv", "apartments_sale_mapping.json"),
+        "Wynajem (Rent)":  ("apartments_rent_processed.csv", "apartments_rent_mapping.json"),
     }
 
     all_results = {}
 
-    for name, filename in datasets.items():
+    for name, (filename, mapping_filename) in datasets.items():
         filepath = os.path.join(PROCESSED_DIR, filename)
         if not os.path.exists(filepath):
             print(f"Brak pliku: {filepath}")
@@ -252,9 +251,19 @@ def main():
             print(f"Brak kolumny '{TARGET_COL}' w {filename}")
             continue
 
+        city_mapping = {}
+        mapping_filepath = os.path.join(PROCESSED_DIR, mapping_filename)
+        if os.path.exists(mapping_filepath):
+            try:
+                with open(mapping_filepath, "r", encoding="utf-8") as f:
+                    full_mapping = json.load(f)
+                    city_mapping = full_mapping.get("city", {})
+            except Exception as e:
+                print(f"Błąd wczytywania mapowania miast: {e}")
+
         results, k_80, k_90, cumulative = analyze_features(df, name)
         plot_results(results, k_80, k_90, cumulative, name)
-        analyze_features_per_city(df, name, generate_plots=True, output_dir=OUTPUT_DIR_CITIES)
+        analyze_features_per_city(df, name, generate_plots=True, output_dir=OUTPUT_DIR_CITIES, city_mapping=city_mapping)
 
         all_results[name] = {
             "results": results,
