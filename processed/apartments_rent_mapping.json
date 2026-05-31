@@ -1,0 +1,55 @@
+{
+    "city": {
+        "0": "bialystok",
+        "1": "bydgoszcz",
+        "2": "czestochowa",
+        "3": "gdansk",
+        "4": "gdynia",
+        "5": "katowice",
+        "6": "krakow",
+        "7": "lodz",
+        "8": "lublin",
+        "9": "poznan",
+        "10": "radom",
+        "11": "rzeszow",
+        "12": "szczecin",
+        "13": "warszawa",
+        "14": "wroclaw"
+    },
+    "type": {
+        "0": "apartmentbuilding",
+        "1": "blockofflats",
+        "2": "tenement"
+    },
+    "ownership": {
+        "0": "condominium"
+    },
+    "buildingMaterial": {
+        "0": "brick",
+        "1": "concreteslab"
+    },
+    "condition": {
+        "0": "low",
+        "1": "premium"
+    },
+    "hasParkingSpace": {
+        "0": "no",
+        "1": "yes"
+    },
+    "hasBalcony": {
+        "0": "no",
+        "1": "yes"
+    },
+    "hasElevator": {
+        "0": "no",
+        "1": "yes"
+    },
+    "hasSecurity": {
+        "0": "no",
+        "1": "yes"
+    },
+    "hasStorageRoom": {
+        "0": "no",
+        "1": "yes"
+    }
+}
