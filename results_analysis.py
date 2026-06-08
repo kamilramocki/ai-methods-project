@@ -1,0 +1,1 @@
+# TODO: Testy statystyczne i wizualizacja wyników
