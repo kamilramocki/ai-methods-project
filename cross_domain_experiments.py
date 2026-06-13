@@ -10,6 +10,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 sys.stdout.reconfigure(encoding='utf-8')
 
+
 def main():
     print("--- ROZPOCZĘCIE EKSPERYMENTU CROSS-DOMAIN ---")
 
@@ -19,33 +20,9 @@ def main():
     print(f"Wczytano zbiór Kupna (Sale): {len(sale_data)} wierszy")
     print(f"Wczytano zbiór Wynajmu (Rent): {len(rent_data)} wierszy")
 
-    # 2. Normalizujemy kolumnę z cenami (y) do zakresu 0-1
-    # y -= np.min(y)
-    # y /= np.max(y)
-    
-    # Kupno
-    y_sale = sale_data['price'].values.astype(float)
-    min_sale = np.min(y_sale)
-    y_sale -= min_sale
-    max_sale = np.max(y_sale)
-    y_sale /= max_sale
-    sale_data['price'] = y_sale
-
-    # Wynajem
-    y_rent = rent_data['price'].values.astype(float)
-    min_rent = np.min(y_rent)
-    y_rent -= min_rent
-    max_rent = np.max(y_rent)
-    y_rent /= max_rent
-    rent_data['price'] = y_rent
-
-    print("Zakończono normalizację cen do zakresu 0-1.")
-
-    # 3. cechy wyselekcjonowane dla każdego miasta
     with open("processed/top_80_features.json", "r", encoding="utf-8") as f:
         top_features_dict = json.load(f)
 
-    # 4. słownik miast, żeby wiedzieć, które ID to jakie miasto
     with open("processed/apartments_sale_mapping.json", "r", encoding="utf-8") as f:
         mapping_data = json.load(f)
     city_mapping = mapping_data["city"]
@@ -54,27 +31,41 @@ def main():
 
     for city_id in range(15):
         city_id_str = str(city_id)
-        city_name = city_mapping[city_id_str]
-        city_name_capitalized = city_name.capitalize()
+        city_name = city_mapping[city_id_str].capitalize()
 
-        print(f"\nObliczenia dla miasta: {city_name_capitalized} (ID: {city_id})")
+        # 1. Filtrujemy dane dla konkretnego miasta przed normalizacją
+        sale_city = sale_data[sale_data['city'] == city_id].copy()
+        rent_city = rent_data[rent_data['city'] == city_id].copy()
 
-        sale_city = sale_data[sale_data['city'] == city_id]
-        rent_city = rent_data[rent_data['city'] == city_id]
-
-        if len(sale_city) == 0 or len(rent_city) == 0:
-            print(f"Pominięto {city_name_capitalized} z powodu braku danych.")
+        if len(sale_city) < 10 or len(rent_city) < 10:
+            print(f"Pominięto {city_name} z powodu zbyt małej liczby danych.")
             continue
 
-        sale_features = top_features_dict["Kupno (Sale)"][city_id_str]
-        rent_features = top_features_dict["Wynajem (Rent)"][city_id_str]
+        print(f"\nObliczenia dla miasta: {city_name} (ID: {city_id})")
 
-        # trenujemy na Kupno (Sale), testujemy na Wynajem (Rent)
-        # Używamy cech wyselekcjonowanych dla Kupna
+        # 2. Lokalna normalizacja
+        # Kupno (Sale) dla danego miasta
+        y_sale_city = sale_city['price'].values.astype(float)
+        y_sale_city -= np.min(y_sale_city)
+        y_sale_city /= np.max(y_sale_city)
+        sale_city['price'] = y_sale_city
+
+        # Wynajem (Rent) dla danego miasta
+        y_rent_city = rent_city['price'].values.astype(float)
+        y_rent_city -= np.min(y_rent_city)
+        y_rent_city /= np.max(y_rent_city)
+        rent_city['price'] = y_rent_city
+
+        # 3. Pobranie cech i zabezpieczenie przed brakiem kolumn
+        sale_features = [f for f in top_features_dict["Kupno (Sale)"][city_id_str] if
+                         f in rent_city.columns and f in sale_city.columns]
+        rent_features = [f for f in top_features_dict["Wynajem (Rent)"][city_id_str] if
+                         f in rent_city.columns and f in sale_city.columns]
+
+        # --- KIERUNEK 1: Kupno -> Wynajem ---
         print(" -> Kierunek: Kupno -> Wynajem")
         X_train_1 = sale_city[sale_features]
         y_train_1 = sale_city['price']
-        
         X_test_1 = rent_city[sale_features]
         y_test_1 = rent_city['price']
 
@@ -82,33 +73,24 @@ def main():
         X_train_scaled_1 = scaler_1.fit_transform(X_train_1)
         X_test_scaled_1 = scaler_1.transform(X_test_1)
 
-        rf_model_1 = RandomForestRegressor(random_state=42)
+        rf_model_1 = RandomForestRegressor(random_state=42, n_jobs=-1)
         rf_model_1.fit(X_train_scaled_1, y_train_1)
-
         y_pred_1 = rf_model_1.predict(X_test_scaled_1)
 
-        mae_1 = mean_absolute_error(y_test_1, y_pred_1)
-        mse_1 = mean_squared_error(y_test_1, y_pred_1)
-        rmse_1 = np.sqrt(mse_1)
         r2_1 = r2_score(y_test_1, y_pred_1)
-
+        mae_1 = mean_absolute_error(y_test_1, y_pred_1)
+        rmse_1 = np.sqrt(mean_squared_error(y_test_1, y_pred_1))
         print(f"    R2 = {r2_1:.4f}, MAE = {mae_1:.4f}, RMSE = {rmse_1:.4f}")
 
         results_list.append({
-            "City": city_name_capitalized,
-            "Direction": "Buy -> Rent",
-            "MAE": mae_1,
-            "MSE": mse_1,
-            "RMSE": rmse_1,
-            "R2": r2_1
+            "City": city_name, "Direction": "Buy -> Rent",
+            "MAE": mae_1, "RMSE": rmse_1, "R2": r2_1
         })
 
-        # trenujemy na Wynajem (Rent), testujemy na Kupno (Sale)
-        # Używamy cech wyselekcjonowanych dla Wynajmu
+        # --- KIERUNEK 2: Wynajem -> Kupno ---
         print(" -> Kierunek: Wynajem -> Kupno")
         X_train_2 = rent_city[rent_features]
         y_train_2 = rent_city['price']
-        
         X_test_2 = sale_city[rent_features]
         y_test_2 = sale_city['price']
 
@@ -116,25 +98,18 @@ def main():
         X_train_scaled_2 = scaler_2.fit_transform(X_train_2)
         X_test_scaled_2 = scaler_2.transform(X_test_2)
 
-        rf_model_2 = RandomForestRegressor(random_state=42)
+        rf_model_2 = RandomForestRegressor(random_state=42, n_jobs=-1)
         rf_model_2.fit(X_train_scaled_2, y_train_2)
-
         y_pred_2 = rf_model_2.predict(X_test_scaled_2)
 
-        mae_2 = mean_absolute_error(y_test_2, y_pred_2)
-        mse_2 = mean_squared_error(y_test_2, y_pred_2)
-        rmse_2 = np.sqrt(mse_2)
         r2_2 = r2_score(y_test_2, y_pred_2)
-
+        mae_2 = mean_absolute_error(y_test_2, y_pred_2)
+        rmse_2 = np.sqrt(mean_squared_error(y_test_2, y_pred_2))
         print(f"    R2 = {r2_2:.4f}, MAE = {mae_2:.4f}, RMSE = {rmse_2:.4f}")
 
         results_list.append({
-            "City": city_name_capitalized,
-            "Direction": "Rent -> Buy",
-            "MAE": mae_2,
-            "MSE": mse_2,
-            "RMSE": rmse_2,
-            "R2": r2_2
+            "City": city_name, "Direction": "Rent -> Buy",
+            "MAE": mae_2, "RMSE": rmse_2, "R2": r2_2
         })
 
     results_df = pd.DataFrame(results_list)
@@ -142,7 +117,7 @@ def main():
     results_df.to_csv(output_path, index=False, encoding="utf-8")
     print(f"\nWyniki eksperymentu zapisano w pliku: {output_path}")
 
-    # prosty wykres porównawczy R2
+    # Wykres porównawczy R2
     buy_to_rent_df = results_df[results_df['Direction'] == 'Buy -> Rent']
     rent_to_buy_df = results_df[results_df['Direction'] == 'Rent -> Buy']
 
@@ -150,14 +125,14 @@ def main():
     x = np.arange(len(buy_to_rent_df))
     width = 0.35
 
-    plt.bar(x - width/2, buy_to_rent_df['R2'], width, label='Kupno -> Wynajem', color='royalblue')
-    plt.bar(x + width/2, rent_to_buy_df['R2'], width, label='Wynajem -> Kupno', color='seagreen')
+    plt.bar(x - width / 2, buy_to_rent_df['R2'], width, label='Kupno -> Wynajem', color='royalblue')
+    plt.bar(x + width / 2, rent_to_buy_df['R2'], width, label='Wynajem -> Kupno', color='seagreen')
 
     plt.xlabel('Miasto')
     plt.ylabel('Wynik R2')
     plt.title('Porównanie wyników R2 w eksperymencie Cross-Domain dla poszczególnych miast')
     plt.xticks(x, buy_to_rent_df['City'], rotation=45)
-    plt.ylim(-1, 1) #zakres dla przejrzystości, R2 może być ujemny przy słabym dopasowaniu
+    plt.ylim(-1, 1)
     plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.legend()
     plt.tight_layout()
@@ -167,6 +142,7 @@ def main():
     plt.savefig(graph_path, dpi=150)
     plt.close()
     print(f"Zapisano wykres porównawczy w: {graph_path}")
+
 
 if __name__ == "__main__":
     main()
